@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>File Downloader</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f5f5f5; color: #222; }
+  .nav { background: #1a2340; display: flex; gap: 0; }
+  .nav button { background: none; border: none; color: #aac; padding: 14px 28px; cursor: pointer; font-size: 15px; }
+  .nav button.active { background: #2563eb; color: #fff; }
+  .page { display: none; padding: 32px; max-width: 1100px; margin: 0 auto; }
+  .page.active { display: block; }
+  h2 { margin-bottom: 20px; color: #1a2340; }
+  .btn { background: #2563eb; color: #fff; border: none; padding: 10px 22px; border-radius: 5px; cursor: pointer; font-size: 14px; }
+  .btn:disabled { background: #aaa; cursor: not-allowed; }
+  .btn.danger { background: #dc2626; }
+  .btn.secondary { background: #4b5563; }
+  .progress-box { background: #fff; border-radius: 8px; padding: 20px; margin-top: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+  .progress-row { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 10px; }
+  .stat { background: #f0f4ff; border-radius: 6px; padding: 10px 18px; text-align: center; }
+  .stat-val { font-size: 24px; font-weight: 700; color: #2563eb; }
+  .stat-label { font-size: 12px; color: #666; margin-top: 2px; }
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; }
+  .status-idle { background: #e5e7eb; color: #555; }
+  .status-running { background: #fef3c7; color: #b45309; }
+  .status-done { background: #d1fae5; color: #065f46; }
+  .status-error { background: #fee2e2; color: #991b1b; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.1); margin-top: 16px; }
+  th { background: #1a2340; color: #fff; text-align: left; padding: 10px 14px; font-size: 13px; }
+  td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8faff; }
+  .pagination { display: flex; gap: 6px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  .pagination button { background: #fff; border: 1px solid #ddd; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .pagination button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .select-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .calc-result { background: #fff; border-radius: 8px; padding: 20px; margin-top: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+  .digit-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 8px; margin-top: 12px; }
+  .digit-cell { text-align: center; background: #f0f4ff; border-radius: 6px; padding: 8px 4px; }
+  .digit-cell .d { font-size: 18px; font-weight: 700; color: #2563eb; }
+  .digit-cell .c { font-size: 12px; color: #555; }
+  .file-stats { margin-top: 16px; max-height: 400px; overflow-y: auto; }
+  .file-stat-row { border-bottom: 1px solid #eee; padding: 10px 0; }
+  .file-stat-name { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .mini-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+  .mini-cell { text-align: center; background: #f9fafb; border-radius: 4px; padding: 4px 2px; font-size: 11px; }
+  .mini-cell .d { font-weight: 700; color: #1a2340; }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <button class="active" onclick="showPage('download')">Скачивание</button>
+  <button onclick="showPage('files')">Файлы и расчёты</button>
+</nav>
+
+<!-- PAGE: DOWNLOAD -->
+<div id="page-download" class="page active">
+  <h2>Скачивание данных</h2>
+  <button class="btn" id="btn-download" onclick="startDownload()">Скачать данные</button>
+
+  <div class="progress-box" id="progress-box">
+    <div>Статус: <span class="status-badge status-idle" id="status-badge">ожидание</span></div>
+    <div style="margin-top:8px;font-size:13px;color:#555" id="start-time"></div>
+    <div class="progress-row" id="progress-stats" style="display:none">
+      <div class="stat"><div class="stat-val" id="p-found">0</div><div class="stat-label">Найдено имён</div></div>
+      <div class="stat"><div class="stat-val" id="p-downloaded">0</div><div class="stat-label">Скачано файлов</div></div>
+      <div class="stat"><div class="stat-val" id="p-total">0</div><div class="stat-label">Всего в хранилище</div></div>
+    </div>
+    <div id="error-msg" style="color:#dc2626;margin-top:10px;font-size:13px"></div>
+  </div>
+</div>
+
+<!-- PAGE: FILES -->
+<div id="page-files" class="page">
+  <h2>Скачанные файлы</h2>
+
+  <div class="select-bar">
+    <button class="btn secondary" onclick="selectPage()">Выбрать страницу</button>
+    <button class="btn secondary" onclick="selectAll()">Выбрать все</button>
+    <button class="btn secondary" onclick="clearSelection()">Снять выбор</button>
+    <span id="selected-count" style="font-size:13px;color:#555">Выбрано: 0</span>
+    <button class="btn" onclick="calculate()">Произвести расчёты</button>
+  </div>
+
+  <table>
+    <thead><tr><th style="width:40px"><input type="checkbox" id="check-all" onchange="toggleAll(this)"></th><th>Имя файла</th><th>Время скачивания (НСК)</th></tr></thead>
+    <tbody id="files-tbody"></tbody>
+  </table>
+
+  <div class="pagination" id="pagination"></div>
+
+  <div class="calc-result" id="calc-result" style="display:none">
+    <h3>Общая статистика</h3>
+    <div class="digit-grid" id="total-grid"></div>
+    <h3 style="margin-top:20px">По файлам</h3>
+    <div class="file-stats" id="file-stats"></div>
+  </div>
+</div>
+
+<script>
+let currentPage = 1;
+const limit = 20;
+let allFiles = [];
+let selectedNames = new Set();
+let pollTimer = null;
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'files') loadFiles();
+}
+
+// ---- DOWNLOAD ----
+async function startDownload() {
+  await fetch('/api/download', { method: 'POST' });
+  document.getElementById('btn-download').disabled = true;
+  document.getElementById('progress-stats').style.display = 'flex';
+  pollProgress();
+}
+
+function pollProgress() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    const res = await fetch('/api/progress');
+    const d = await res.json();
+    updateProgress(d);
+    if (d.status === 'done' || d.status === 'error') clearInterval(pollTimer);
+  }, 1000);
+}
+
+function updateProgress(d) {
+  const badge = document.getElementById('status-badge');
+  const labels = { idle: 'ожидание', running: 'скачивание...', done: 'завершено', error: 'ошибка' };
+  badge.textContent = labels[d.status] || d.status;
+  badge.className = 'status-badge status-' + d.status;
+
+  if (d.startTime) {
+    const nsk = new Date(d.startTime).toLocaleString('ru-RU', { timeZone: 'Asia/Novosibirsk' });
+    document.getElementById('start-time').textContent = 'Старт по НСК: ' + nsk;
+  }
+  document.getElementById('p-found').textContent = d.found;
+  document.getElementById('p-downloaded').textContent = d.downloaded;
+  document.getElementById('p-total').textContent = d.total;
+
+  if (d.status === 'done') document.getElementById('btn-download').disabled = false;
+  if (d.error) document.getElementById('error-msg').textContent = 'Ошибка: ' + d.error;
+}
+
+// ---- FILES ----
+async function loadFiles(page) {
+  page = page || currentPage;
+  const res = await fetch(`/api/files?page=${page}&limit=${limit}`);
+  const data = await res.json();
+  allFiles = data.items;
+  currentPage = data.page;
+  renderFiles(data);
+  renderPagination(data);
+}
+
+function renderFiles(data) {
+  const tbody = document.getElementById('files-tbody');
+  tbody.innerHTML = '';
+  for (const f of data.items) {
+    const nsk = new Date(f.downloadedAt).toLocaleString('ru-RU', { timeZone: 'Asia/Novosibirsk' });
+    const checked = selectedNames.has(f.name) ? 'checked' : '';
+    tbody.innerHTML += `<tr>
+      <td><input type="checkbox" ${checked} onchange="toggleFile('${f.name}', this)"></td>
+      <td>${f.name}</td>
+      <td>${nsk}</td>
+    </tr>`;
+  }
+  updateSelectedCount();
+}
+
+function renderPagination(data) {
+  const el = document.getElementById('pagination');
+  el.innerHTML = '';
+  const btn = (label, page, disabled, active) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (active) b.classList.add('active');
+    b.disabled = disabled;
+    b.onclick = () => loadFiles(page);
+    el.appendChild(b);
+  };
+  btn('←', currentPage - 1, currentPage <= 1, false);
+  const start = Math.max(1, currentPage - 2);
+  const end = Math.min(data.pages, currentPage + 2);
+  for (let i = start; i <= end; i++) btn(i, i, false, i === currentPage);
+  btn('→', currentPage + 1, currentPage >= data.pages, false);
+  el.appendChild(Object.assign(document.createElement('span'), { textContent: `Всего: ${data.total}`, style: 'font-size:13px;color:#666;margin-left:8px' }));
+}
+
+function toggleFile(name, cb) {
+  if (cb.checked) selectedNames.add(name);
+  else selectedNames.delete(name);
+  updateSelectedCount();
+}
+
+function toggleAll(cb) {
+  for (const f of allFiles) {
+    if (cb.checked) selectedNames.add(f.name);
+    else selectedNames.delete(f.name);
+  }
+  loadFiles(currentPage);
+}
+
+function selectPage() {
+  for (const f of allFiles) selectedNames.add(f.name);
+  loadFiles(currentPage);
+}
+
+async function selectAll() {
+  const res = await fetch(`/api/files?page=1&limit=100000`);
+  const data = await res.json();
+  for (const f of data.items) selectedNames.add(f.name);
+  loadFiles(currentPage);
+}
+
+function clearSelection() {
+  selectedNames.clear();
+  document.getElementById('check-all').checked = false;
+  loadFiles(currentPage);
+}
+
+function updateSelectedCount() {
+  document.getElementById('selected-count').textContent = `Выбрано: ${selectedNames.size}`;
+}
+
+// ---- CALCULATE ----
+async function calculate() {
+  if (!selectedNames.size) return alert('Выберите файлы');
+  const res = await fetch('/api/calculate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ names: [...selectedNames] })
+  });
+  const data = await res.json();
+
+  const box = document.getElementById('calc-result');
+  box.style.display = 'block';
+
+  const totalGrid = document.getElementById('total-grid');
+  totalGrid.innerHTML = '';
+  for (let d = 0; d <= 9; d++) {
+    totalGrid.innerHTML += `<div class="digit-cell"><div class="d">${d}</div><div class="c">${(data.total[d] || 0).toLocaleString()}</div></div>`;
+  }
+
+  const fileStats = document.getElementById('file-stats');
+  fileStats.innerHTML = '';
+  for (const [fname, counts] of Object.entries(data.files)) {
+    let miniCells = '';
+    for (let d = 0; d <= 9; d++) miniCells += `<div class="mini-cell"><div class="d">${d}</div><div>${counts[d] || 0}</div></div>`;
+    fileStats.innerHTML += `<div class="file-stat-row"><div class="file-stat-name">${fname}</div><div class="mini-grid">${miniCells}</div></div>`;
+  }
+
+  box.scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
